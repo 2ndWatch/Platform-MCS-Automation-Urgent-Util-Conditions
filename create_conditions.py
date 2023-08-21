@@ -1,5 +1,6 @@
 from string import Template
 import requests
+import json
 
 
 # create policy; return policy ID
@@ -21,21 +22,18 @@ def create_policy(endpoint, headers, account_id, logger):
                                 headers=headers,
                                 json={'query': policy_template_fmtd}).json()
 
-    policy_id = 0
     try:
         policy_id = nr_response['data']['alertsPolicyCreate']['id']
         logger.info(f'   Utilization alert policy successfully created: {policy_id}.')
-        return 0
-    except KeyError:
-        logger.warning(nr_response)
+        return policy_id
+    except KeyError as e:
+        logger.info(e)
+        logger.info(nr_response)
+        return 1
 
-    return policy_id
 
-
-# TODO: create conditions for CPU and memory, associated with policy ID
-
+# create conditions for CPU and memory, associated with policy ID
 def create_conditions(endpoint, headers, account_id, policy_id, logger):
-    logger.info('Creating CPU and memory utilization conditions...')
     condition_template = Template("""
     mutation {
       alertsNrqlConditionStaticCreate(
@@ -70,6 +68,7 @@ def create_conditions(endpoint, headers, account_id, policy_id, logger):
     }
     """)
 
+    # TODO: rename from URGENT to CRITICAL (P1) or MAJOR (P2) depending on desired ticket priority in FS
     conditions = {
         "CPU": {
             "name": "URGENT_CPU_Utilization_100",
@@ -84,6 +83,8 @@ def create_conditions(endpoint, headers, account_id, policy_id, logger):
     }
 
     for key, condition in conditions.items():
+        logger.info(f'Creating {key} condition...')
+
         condition_template_fmtd = condition_template.substitute({"account_id": account_id,
                                                                  "metric": key,
                                                                  "name": condition["name"],
@@ -97,13 +98,128 @@ def create_conditions(endpoint, headers, account_id, policy_id, logger):
         try:
             condition_id = nr_response['data']['alertsNrqlConditionStaticCreate']['id']
             logger.info(f'   Condition {condition_id} {condition["name"]} successfully created for policy {policy_id}.')
-            return 0
-        except KeyError:
-            logger.warning(nr_response)
+        except (KeyError, TypeError) as e:
+            logger.info(e)
+            logger.info(nr_response)
 
 
-# TODO: get Platform workflow; return workflow ID, issuesFilter ID, list of existing associated policies
+# get Platform workflow; return workflow ID, issuesFilter ID, list of existing associated policies
+def get_platform_workflow(endpoint, headers, account_id, logger):
+    logger.info('Locating Platform workflow...')
+    workflows_query = Template("""
+        {
+          actor {
+            account(id: $account_id) {
+              aiWorkflows {
+                workflows {
+                  entities {
+                    id
+                    name
+                    issuesFilter {
+                      id
+                      predicates {
+                        attribute
+                        operator
+                        values
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        """)
 
-# TODO: add new policy ID to list of existing workflow policies
+    workflows_query_fmtd = workflows_query.substitute({'account_id': account_id})
+    nr_response = requests.post(endpoint,
+                                headers=headers,
+                                json={'query': workflows_query_fmtd}).json()
 
-# TODO: update Platform workflow with updated list of policies
+    for workflow in nr_response['data']['actor']['account']['aiWorkflows']['workflows']['entities']:
+        if 'Platform' in workflow['name']:
+            try:
+                workflow_id = workflow["id"]
+                filter_id = workflow['issuesFilter']['id']
+                values_list = []
+                for predicate in workflow['issuesFilter']['predicates']:
+                    if predicate['attribute'] == 'labels.policyIds':
+                        values_list = predicate['values']
+                logger.info(f'   Platform workflow found: {workflow_id}\n'
+                            f'      Filter ID: {filter_id}\n'
+                            f'      Associated policies: {values_list}')
+
+                return workflow_id, filter_id, values_list
+            except KeyError as e:
+                logger.info(e)
+                logger.info(nr_response)
+        else:
+            continue
+
+
+# update Platform workflow with updated list of policies
+def update_workflow(endpoint, headers, account_id, policy_id, workflow_id, filter_id, values_list, logger):
+    logger.info('Assigning alert policy to Platform workflow...')
+    values_list = json.dumps(values_list)
+
+    update_template = Template("""
+    mutation UpdateWorkflow {
+      aiWorkflowsUpdateWorkflow(
+        accountId: $account_id
+        updateWorkflowData: {
+          id: "$workflow_id", 
+          issuesFilter: {
+            id: "$filter_id", 
+            filterInput: {
+              predicates: [
+                {
+                  values: $values_list, 
+                  attribute: "labels.policyIds", 
+                  operator: EXACTLY_MATCHES
+                },
+                {
+                  attribute: "priority",
+                  operator: EQUAL,
+                  values: [
+                    "CRITICAL"
+                  ]
+                }
+              ] 
+              type: FILTER
+            }
+          }
+        }
+      ) {
+        workflow {
+          id
+          issuesFilter {
+            predicates {
+              attribute
+              values
+            }
+          }
+        }
+        errors {
+          type
+          description
+        }
+      }
+    }
+    """)
+
+    update_template_fmtd = update_template.substitute({'account_id': account_id,
+                                                       'workflow_id': workflow_id,
+                                                       'filter_id': filter_id,
+                                                       'values_list': values_list})
+    nr_response = requests.post(endpoint,
+                                headers=headers,
+                                json={'query': update_template_fmtd}).json()
+
+    try:
+        for predicate in nr_response['data']['aiWorkflowsUpdateWorkflow']['workflow']['issuesFilter']['predicates']:
+            if predicate['attribute'] == 'labels.policyIds':
+                values = predicate['values']
+                if str(policy_id) in values:
+                    logger.info('   Alert policy successfully added to Platform workflow.')
+    except KeyError as e:
+        logger.info(f'   Error: {e}')

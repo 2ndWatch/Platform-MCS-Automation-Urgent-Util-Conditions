@@ -55,7 +55,7 @@ def main():
     accounts = get_nr_account_ids(endpoint, headers)
 
     # TODO: double-check excluded accounts
-    # TODO: add Tooling-Test 3720977 back in for prod
+    # TODO: add Tooling-Test 3720977 back in when running for prod
     # 2W-MCS-Development, 2W-MCS-Internal-IT, 2W-MCS-Sandboxes, 2W-MCS-SiriusPoint-AWS, 2W-MCS-Tooling-Test,
     # 2W-MCS-Sysco-Azure, 2W-MCS-Sysco-GCP, 2W-MCS-AutoNation, 2nd Watch Partner,
     # 2W-MCS-PrudentPublishing (duplicate?), 2W-MCS-TitleMax, 2W-PRO-Development
@@ -74,9 +74,21 @@ def main():
         if account_id not in account_exclude_list:
             logger.info(f'\n-----\nProcessing {client_name} in NR account {account_id}...\n-----\n')
             policy_id = cc.create_policy(endpoint, headers, account_id, logger)
-            cc.create_conditions(endpoint, headers, account_id, policy_id, logger)
+            if policy_id != 1:
+                cc.create_conditions(endpoint, headers, account_id, policy_id, logger)
+                workflow_id, filter_id, values_list = cc.get_platform_workflow(endpoint, headers, account_id, logger)
+                if values_list:
+                    values_list.append(str(policy_id))
+                    logger.info(f'Policy ID added to workflow associated policies:\n'
+                                f'   {values_list}')
+                    cc.update_workflow(endpoint, headers, account_id, policy_id, workflow_id, filter_id, values_list,
+                                       logger)
+                else:
+                    logger.info(f'Something went wrong while trying to retrieve the Platform workflow.')
+            else:
+                logger.info(f'Something went wrong while trying to create the utilization alert policy.')
         else:
-            logger.info(f'\n-----\n{client_name} in excluded accounts list; skipping account.\n-----\n')
+            logger.info(f'\n-----\n{client_name} is in the excluded accounts list; skipping this account.\n-----\n')
 
 
 main()
