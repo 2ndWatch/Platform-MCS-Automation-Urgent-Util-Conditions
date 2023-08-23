@@ -4,6 +4,7 @@ from datetime import datetime
 from string import Template
 import sys
 import create_conditions as cc
+import create_muting_rules as mr
 
 
 def initialize_logger():
@@ -44,7 +45,7 @@ def get_nr_account_ids(endpoint, headers):
 
 def main():
     logger = initialize_logger()
-    logger.info('Starting the policy and condition creation process.')
+    logger.info('Starting the muting rules, policy and condition creation process.')
 
     endpoint = 'https://api.newrelic.com/graphql'
     headers = {
@@ -73,22 +74,27 @@ def main():
 
         if account_id not in account_exclude_list:
             logger.info(f'\n-----\nProcessing {client_name} in NR account {account_id}...\n-----\n')
-            policy_id = cc.create_policy(endpoint, headers, account_id, logger)
-            if policy_id != 1:
-                cc.create_conditions(endpoint, headers, account_id, policy_id, logger)
-                workflow_id, filter_id, values_list = cc.get_platform_workflow(endpoint, headers, account_id, logger)
-                if values_list:
-                    values_list.append(str(policy_id))
-                    logger.info(f'Policy ID added to workflow associated policies:\n'
-                                f'   {values_list}')
-                    cc.update_workflow(endpoint, headers, account_id, policy_id, workflow_id, filter_id, values_list,
-                                       logger)
-                else:
-                    logger.info(f'Something went wrong while trying to retrieve the Platform workflow.')
-            else:
-                logger.info(f'Something went wrong while trying to create the utilization alert policy.')
+
+            mr.create_muting_rules(endpoint, headers, account_id, logger)
+
+            # policy_id = cc.create_policy(endpoint, headers, account_id, logger)
+            # if policy_id != 1:
+            #     cc.create_conditions(endpoint, headers, account_id, policy_id, logger)
+            #     workflow_id, filter_id, values_list = cc.get_platform_workflow(endpoint, headers, account_id, logger)
+            #     if values_list:
+            #         values_list.append(str(policy_id))
+            #         logger.info(f'Policy ID added to workflow associated policies:\n'
+            #                     f'   {values_list}')
+            #         cc.update_workflow(endpoint, headers, account_id, policy_id, workflow_id, filter_id, values_list,
+            #                            logger)
+            #     else:
+            #         logger.info(f'Something went wrong while trying to retrieve the Platform workflow.')
+            # else:
+            #     logger.info(f'Something went wrong while trying to create the utilization alert policy.')
         else:
             logger.info(f'\n-----\n{client_name} is in the excluded accounts list; skipping this account.\n-----\n')
 
+
+# TODO: module to detect and disable CPU and memory muting rules
 
 main()

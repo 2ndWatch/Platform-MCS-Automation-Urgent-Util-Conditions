@@ -68,15 +68,14 @@ def create_conditions(endpoint, headers, account_id, policy_id, logger):
     }
     """)
 
-    # TODO: rename from URGENT to CRITICAL (P1) or MAJOR (P2) depending on desired ticket priority in FS
     conditions = {
         "CPU": {
-            "name": "URGENT_CPU_Utilization_100",
+            "name": "CRITICAL_CPU_Utilization_100",
             "nrql": "SELECT max(aws.ec2.CPUUtilization) from Metric where metricName = 'aws.ec2.CPUUtilization' facet "
                     "aws.ec2.InstanceId, tags.Name, entityGuid, entityId"
         },
         "memory": {
-            "name": "URGENT_Memory_Utilization_100",
+            "name": "CRITICAL_Memory_Utilization_100",
             "nrql": "SELECT max(host.memoryUsedPercent) from Metric where metricName = 'host.memoryUsedPercent' facet "
                     "aws.ec2.InstanceId, tags.Name, entityGuid, entityId"
         }
