@@ -50,7 +50,7 @@ def main():
     endpoint = 'https://api.newrelic.com/graphql'
     headers = {
         'Content-Type': 'application/json',
-        'API-Key': 'NRAK-7DVT82DILPFIAXSZZ6CLPKYB8YU',
+        'API-Key': '',
     }
 
     accounts = get_nr_account_ids(endpoint, headers)
