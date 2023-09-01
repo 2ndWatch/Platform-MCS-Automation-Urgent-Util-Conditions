@@ -21,25 +21,27 @@ def epoch_time_ms():
     return today, seven_days
 
 
-def generate_report(endpoint, headers, account_id, logger):
+def get_issue_count(endpoint, headers, client_name, account_id, issues_df, logger):
     logger.info('Collecting issue data...')
+    today, seven_days = epoch_time_ms()
 
-    # TODO: change issue filter as needed
-    # Utilization_100
+    conditions = ['CPU_Utilization_100', 'Memory_Utilization_100']
+    conditions_test = ['CPU', 'Memory']
+
     issue_template = Template("""
         {
           actor {
             account(id: $account_id) {
               aiIssues {
                 issues(
-                  filter: {contains: "CPU"}
+                  filter: {contains: "$condition"}
                   timeWindow: {startTime: $start, endTime: $end}
+                  cursor: "$cursor"
                 ) {
                   issues {
                     conditionName
-                    policyName
-                    entityNames
                   }
+                  nextCursor
                 }
               }
             }
@@ -47,19 +49,42 @@ def generate_report(endpoint, headers, account_id, logger):
         }
         """)
 
-    today, seven_days = epoch_time_ms()
+    cpu_issues = 0
+    memory_issues = 0
 
-    issue_template_fmtd = issue_template.substitute({'account_id': account_id,
-                                                     'start': seven_days,
-                                                     'end': today})
-    nr_response = requests.post(endpoint,
-                                headers=headers,
-                                json={'query': issue_template_fmtd}).json()
+    # TODO: change conditions_test to conditions for prod
+    for condition in conditions:
+        is_cursor = True
+        cursor = ''
 
-    # print(nr_response)
-    issue_count = 0
+        while is_cursor:
 
-    for issue in nr_response['data']['actor']['account']['aiIssues']['issues']['issues']:
-        issue_count += 1
+            issue_template_fmtd = issue_template.substitute({'account_id': account_id,
+                                                             'condition': condition,
+                                                             'start': seven_days,
+                                                             'end': today,
+                                                             'cursor': cursor})
+            nr_response = requests.post(endpoint,
+                                        headers=headers,
+                                        json={'query': issue_template_fmtd}).json()
 
-    print(f'   {issue_count} CPU issue(s) found.')
+            # print(nr_response)
+            issue_count = len(nr_response['data']['actor']['account']['aiIssues']['issues']['issues'])
+
+            # TODO: change 'CPU' to 'CPU_Utilization_100' for production
+            if condition == 'CPU':
+                cpu_issues += issue_count
+                print(f'   {cpu_issues} {condition} issue(s) found.')
+            else:
+                memory_issues += issue_count
+                print(f'   {memory_issues} {condition} issue(s) found.')
+
+            if nr_response['data']['actor']['account']['aiIssues']['issues']['nextCursor']:
+                cursor = nr_response['data']['actor']['account']['aiIssues']['issues']['nextCursor']
+            else:
+                is_cursor = False
+
+    row = [client_name, cpu_issues, memory_issues]
+    issues_df.loc[len(issues_df)] = row
+
+    return issues_df

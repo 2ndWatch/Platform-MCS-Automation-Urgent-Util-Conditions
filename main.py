@@ -6,6 +6,10 @@ import sys
 import create_conditions as cc
 import create_muting_rules as mr
 import generate_issue_report as ir
+import remove_policy as rp
+import pandas as pd
+import openpyxl
+from UliPlot.XLSX import auto_adjust_xlsx_column_width as adjust
 
 
 def initialize_logger():
@@ -21,7 +25,6 @@ def initialize_logger():
 
 
 def get_nr_account_ids(endpoint, headers, logger):
-
     # response['data']['actor']['accounts'] (list of accounts)
     # account keys: 'id', 'name'
     nr_gql_accounts_query = Template("""
@@ -56,33 +59,38 @@ def main():
 
     accounts = get_nr_account_ids(endpoint, headers, logger)
 
-    # TODO: double-check excluded accounts
-    # TODO: add Tooling-Test 3720977 back in when running for prod
-    # 2W-MCS-Development, 2W-MCS-Internal-IT, 2W-MCS-Sandboxes, 2W-MCS-SiriusPoint-AWS, 2W-MCS-Tooling-Test,
-    # 2W-MCS-Sysco-Azure, 2W-MCS-Sysco-GCP, 2W-MCS-AutoNation, 2nd Watch Partner,
-    # 2W-MCS-PrudentPublishing (duplicate?), 2W-MCS-TitleMax, 2W-PRO-Development
-    account_exclude_list = [2804528, 3719648, 2631905, 3498029, 3563046, 3563050,
-                            2726097, 2563179, 3589554, 2623152, 2824352]
+    # 2W-MCS-Development, 2W-MCS-Internal-IT, 2W-MCS-Sandboxes, 2W-MCS-Tooling-Test,
+    # 2W-MCS-AutoNation, 2nd Watch Partner, 2W-MCS-PrudentPublishing (duplicate?), 2W-MCS-TitleMax,
+    # 2W-PRO-Development, 2W-MCS-notifications-channel-test
+    account_exclude_list = [2804528, 3719648, 2631905, 3720977, 2726097, 2563179, 3589554, 2623152, 2824352, 3773323]
     accounts_list = accounts['data']['actor']['accounts']
     accounts_sorted = sorted(accounts_list, key=lambda x: x['name'])
 
     # testing
-    accounts_sorted = [{"id": 3720977, "name": "2W-MCS-Tooling-Test"}]
+    # accounts_sorted = [{"id": 2659483, "name": "2W-MCS-Sysco"},
+    #                    {"id": 3324386, "name": "2W-MCS-UtilitiesInternational"}]
 
-    accounts_sorted_for_report = [{"id": 2672103, "name": "2W-MCS-KrispyKreme"}]
+    # accounts_sorted_batch_test = [{"id": 2621186, "name": "2W-MCS-2ndWatch"},
+    #                               {"id": 2672105, "name": "2W-MCS-Aperio"},
+    #                               {"id": 2709554, "name": "2W-MCS-Cargill"}]
 
-    for account in accounts_sorted_for_report:
+    initial_issues_df = pd.DataFrame(columns=['Client Name', 'All CPU Issues', 'All Memory Issues'])
+    issues_df = pd.DataFrame(columns=['Client Name', 'CPU 100% Issues', 'Memory 100% Issues'])
+
+    for account in accounts_sorted:
         account_id = account['id']
         client_name = account['name']
 
         if account_id not in account_exclude_list:
             logger.info(f'\n-----\nProcessing {client_name} in NR account {account_id}...\n-----\n')
 
+            # rp.find_remove_policy(endpoint, headers, account_id, logger)
+
             # mr.create_muting_rules(endpoint, headers, account_id, logger)
 
-            # policy_id = cc.create_policy(endpoint, headers, account_id, logger)
-            # if policy_id != 1:
-                # cc.create_conditions(endpoint, headers, account_id, policy_id, logger)
+            policy_id = cc.create_policy(endpoint, headers, account_id, logger)
+            if policy_id != 1:
+                cc.create_conditions(endpoint, headers, account_id, policy_id, logger)
                 # workflow_id, filter_id, values_list = cc.get_platform_workflow(endpoint, headers, account_id, logger)
                 # if values_list:
                 #     values_list.append(str(policy_id))
@@ -95,12 +103,24 @@ def main():
             # else:
             #     logger.info(f'Something went wrong while trying to create the utilization alert policy.')
 
-            ir.generate_report(endpoint, headers, account_id, logger)
+            # ir.get_issue_count(endpoint, headers, client_name, account_id, initial_issues_df, logger)
 
         else:
             logger.info(f'\n-----\n{client_name} is in the excluded accounts list; skipping this account.\n-----\n')
 
+    # try:
+    #     with pd.ExcelWriter(f'CPU Mem Issues Past 30 Days {datetime.today().date()}.xlsx',
+    #                         mode='a', if_sheet_exists='replace') as writer:
+    #         initial_issues_df.to_excel(writer, sheet_name=f'Issues', index=False)
+    #         adjust(initial_issues_df, writer, sheet_name=f'Issues', margin=3, index=False)
+    # except FileNotFoundError:
+    #     with pd.ExcelWriter(f'CPU Mem Issues Past 30 Days {datetime.today().date()}.xlsx') as writer:
+    #         initial_issues_df.to_excel(writer, sheet_name=f'Issues', index=False)
+    #         adjust(initial_issues_df, writer, sheet_name=f'Issues', margin=3, index=False)
+
 
 # TODO: module to detect and disable CPU and memory muting rules
+
+# 2W-CPU-Mem-100-test workflow
 
 main()

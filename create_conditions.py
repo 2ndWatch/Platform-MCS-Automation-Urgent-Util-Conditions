@@ -42,7 +42,7 @@ def create_conditions(endpoint, headers, account_id, policy_id, logger):
         condition: {
           enabled: true
           name: "$name"
-          description: "Alert when $metric utilization is 100% for 5 minutes."
+          description: "Alert when $metric utilization is at or above 99.9% for at least 5 minutes."
           nrql: {
             query:  "$nrql"
           }
@@ -53,8 +53,8 @@ def create_conditions(endpoint, headers, account_id, policy_id, logger):
           }
           terms: [
             {
-              operator: EQUALS
-              threshold: 100
+              operator: ABOVE_OR_EQUALS
+              threshold: 99.9
               priority: CRITICAL
               thresholdDuration: 300
               thresholdOccurrences: ALL
@@ -71,13 +71,12 @@ def create_conditions(endpoint, headers, account_id, policy_id, logger):
     conditions = {
         "CPU": {
             "name": "CRITICAL_CPU_Utilization_100",
-            "nrql": "SELECT max(aws.ec2.CPUUtilization) from Metric where metricName = 'aws.ec2.CPUUtilization' facet "
-                    "aws.ec2.InstanceId, tags.Name, entityGuid, entityId"
+            "nrql": "SELECT max(cpuPercent) from SystemSample facet aws.ec2.InstanceId, tags.Name, entityGuid, entityId"
         },
         "memory": {
             "name": "CRITICAL_Memory_Utilization_100",
-            "nrql": "SELECT max(host.memoryUsedPercent) from Metric where metricName = 'host.memoryUsedPercent' facet "
-                    "aws.ec2.InstanceId, tags.Name, entityGuid, entityId"
+            "nrql": "SELECT max(memoryUsedPercent) from SystemSample facet aws.ec2.InstanceId, tags.Name, "
+                    "entityGuid, entityId"
         }
     }
 
