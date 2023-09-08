@@ -32,8 +32,39 @@ def create_policy(endpoint, headers, account_id, logger):
         return 1
 
 
+def get_test_policy_id(endpoint, headers, account_id, logger):
+    search_template = Template("""
+    {
+      actor {
+        account(id: $account_id) {
+          alerts {
+            policiesSearch(searchCriteria: {name: "2W-CPU-Mem-100"}) {
+              policies {
+                name
+                id
+              }
+            }
+          }
+        }
+      }
+    }
+    """)
+    search_template_fmtd = search_template.substitute({"account_id": account_id})
+    nr_response = requests.post(endpoint,
+                                headers=headers,
+                                json={'query': search_template_fmtd}).json()
+    try:
+        policy_id = nr_response['data']['actor']['account']['alerts']['policiesSearch']['policies'][0]['id']
+        logger.info(f'Utilization alert policy found: {policy_id}\n')
+        return policy_id
+    except [KeyError, IndexError] as e:
+        logger.info(e)
+        logger.info(nr_response)
+        return 1
+
+
 # create conditions for CPU and memory, associated with policy ID
-def create_conditions(endpoint, headers, account_id, policy_id, logger):
+def create_conditions(endpoint, headers, account_id, client_name, policy_id, logger):
     condition_template = Template("""
     mutation {
       alertsNrqlConditionStaticCreate(
@@ -42,7 +73,7 @@ def create_conditions(endpoint, headers, account_id, policy_id, logger):
         condition: {
           enabled: true
           name: "$name"
-          description: "Alert when $metric utilization is at or above 99.9% for at least 5 minutes."
+          description: "$client_name $priority alert for $metric utilization."
           nrql: {
             query:  "$nrql"
           }
@@ -54,9 +85,9 @@ def create_conditions(endpoint, headers, account_id, policy_id, logger):
           terms: [
             {
               operator: ABOVE_OR_EQUALS
-              threshold: 99.9
+              threshold: $threshold
               priority: CRITICAL
-              thresholdDuration: 300
+              thresholdDuration: $duration
               thresholdOccurrences: ALL
             }
           ]
@@ -68,37 +99,70 @@ def create_conditions(endpoint, headers, account_id, policy_id, logger):
     }
     """)
 
+    # "CRITICAL": {
+    #     "threshold": 99.9,
+    #     "duration": 300
+    # },
+
     conditions = {
         "CPU": {
-            "name": "CRITICAL_CPU_Utilization_100",
-            "nrql": "SELECT max(cpuPercent) from SystemSample facet aws.ec2.InstanceId, tags.Name, entityGuid, entityId"
+            "name": "CPU_Utilization",
+            "priority": {
+                "MAJOR": {
+                    "threshold": 95,
+                    "duration": 600
+                },
+                "MINOR": {
+                    "threshold": 90,
+                    "duration": 900
+                }
+            },
+            "nrql": "SELECT max(cpuPercent) from SystemSample facet hostname, provider.ec2InstanceId, tags.Name, "
+                    "entityGuid, entityId"
         },
         "memory": {
-            "name": "CRITICAL_Memory_Utilization_100",
-            "nrql": "SELECT max(memoryUsedPercent) from SystemSample facet aws.ec2.InstanceId, tags.Name, "
+            "name": "Memory_Utilization",
+            "priority": {
+                "MAJOR": {
+                    "threshold": 95,
+                    "duration": 600
+                },
+                "MINOR": {
+                    "threshold": 90,
+                    "duration": 900
+                }
+            },
+            "nrql": "SELECT max(memoryUsedPercent) from SystemSample facet hostname, provider.ec2InstanceId, "
+                    "tags.Name, "
                     "entityGuid, entityId"
         }
     }
 
-    for key, condition in conditions.items():
-        logger.info(f'Creating {key} condition...')
+    for c_key, condition in conditions.items():
+        for p_key, priority in condition['priority'].items():
+            logger.info(f'Creating {c_key} condition...')
+            name = f"{p_key}_{condition['name']}_{str(priority['threshold'])}"
 
-        condition_template_fmtd = condition_template.substitute({"account_id": account_id,
-                                                                 "metric": key,
-                                                                 "name": condition["name"],
-                                                                 "nrql": condition["nrql"],
-                                                                 "policy_id": policy_id})
+            condition_template_fmtd = condition_template.substitute({"account_id": account_id,
+                                                                     "metric": c_key,
+                                                                     "name": name,
+                                                                     "nrql": condition["nrql"],
+                                                                     "policy_id": policy_id,
+                                                                     "client_name": client_name,
+                                                                     "priority": p_key,
+                                                                     "threshold": priority["threshold"],
+                                                                     "duration": priority["duration"]})
 
-        nr_response = requests.post(endpoint,
-                                    headers=headers,
-                                    json={'query': condition_template_fmtd}).json()
+            nr_response = requests.post(endpoint,
+                                        headers=headers,
+                                        json={'query': condition_template_fmtd}).json()
 
-        try:
-            condition_id = nr_response['data']['alertsNrqlConditionStaticCreate']['id']
-            logger.info(f'   Condition {condition_id} {condition["name"]} successfully created for policy {policy_id}.')
-        except (KeyError, TypeError) as e:
-            logger.info(e)
-            logger.info(nr_response)
+            try:
+                condition_id = nr_response['data']['alertsNrqlConditionStaticCreate']['id']
+                logger.info(f'   Condition {condition_id} {name} successfully created for policy {policy_id}.')
+            except (KeyError, TypeError) as e:
+                logger.info(e)
+                logger.info(nr_response)
 
 
 # get Platform workflow; return workflow ID, issuesFilter ID, list of existing associated policies
