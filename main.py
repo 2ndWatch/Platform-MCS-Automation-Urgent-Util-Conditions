@@ -57,29 +57,31 @@ def main():
 
     accounts = get_nr_account_ids(endpoint, headers, logger)
 
-    # 2W-MCS-Development, 2W-MCS-Internal-IT, 2W-MCS-Sandboxes, 2W-MCS-Tooling-Test,
-    # 2W-MCS-AutoNation, 2nd Watch Partner, 2W-MCS-PrudentPublishing (duplicate), 2W-MCS-TitleMax,
-    # 2W-PRO-Development, 2W-MCS-notifications-channel-test
-    account_exclude_list = [2804528, 3719648, 2631905, 3720977, 2726097, 2563179, 3589554, 2623152, 2824352, 3773323]
+    # 2W-MCS-Development, 2W-MCS-Internal-IT, 2W-MCS-Sandboxes, 2W-MCS-Tooling-Test, 2nd Watch Partner,
+    # 2W-MCS-PrudentPublishing (duplicate), 2W-PRO-Development, 2W-MCS-notifications-channel-test, 2W-MCS-Symetra,
+    # 2W-MCS-Coaction, 2W-MCS-Lenovo-China, 2W-MCS-Sysco-Azure, 2W-MCS-Sysco-GCP
+    account_exclude_list = [2804528, 3719648, 2631905, 3720977, 2563179, 3589554, 2824352, 3773323, 2671645, 2622938,
+                            3195307, 3563046, 3563050]
     accounts_list = accounts['data']['actor']['accounts']
     accounts_sorted = sorted(accounts_list, key=lambda x: x['name'])
 
     # testing
-    # accounts_sorted = [{"id": 2621186, "name": "2W-MCS-2ndWatch"}]
+    # accounts_sorted = [{"id": 2659483, "name": "2W-MCS-Sysco"}]
+    # accounts_sorted = [{"id": 3720977, "name": "2W-MCS-Tooling-Test"}]
 
     # accounts_sorted_batch_test = [{"id": 2672105, "name": "2W-MCS-Aperio"},
-    #                               {"id": 2672103, "name": "2W-MCS-KrispyKreme"}]
-
-    # accounts_sorted_majmintest = [{"id": 3770774, "name": "2W-MCS-International-Medical-Group"},
-    #                               {"id": 2672103, "name": "2W-MCS-KrispyKreme"},
-    #                               {"id": 3588235, "name": "2W-MCS-NAIC-New"},
-    #                               {"id": 2687834, "name": "2W-MCS-RYAM"},
-    #                               {"id": 3498029, "name": "2W-MCS-SiriusPoint-AWS"},
-    #                               {"id": 2671646, "name": "2W-MCS-VNSHealth"}]
+    #                               {"id": 2659483, "name": "2W-MCS-Sysco"}]
+    #
+    # accounts_sorted_majmintest = [{"id": 2726096, "name": "2W-MCS-USPlate"},
+    #                               {"id": 3324386, "name": "2W-MCS-UI"},
+    #                               {"id": 2401533, "name": "2W-MCS-Verizon"},
+    #                               {"id": 2739512, "name": "2W-MCS-VisibilitySoftware"},
+    #                               {"id": 2709547, "name": "2W-MCS-Yamaha"},
+    #                               {"id": 2726088, "name": "2W-MCS-eTurns"}]
 
     # initial_issues_df = pd.DataFrame(columns=['Client Name', 'All CPU Issues', 'All Memory Issues'])
-    issues_df = pd.DataFrame(columns=['Client Name', 'Minor CPU', 'Major CPU', 'Test Minor CPU', 'Test Major CPU',
-                                      'Test CPU 100%', 'Filtered CPU 100%', 'Filters?', 'Minor Mem', 'Major Mem',
+    issues_df = pd.DataFrame(columns=['Client Name', 'Active Minor CPU', 'Active Major CPU', 'Test Minor CPU',
+                                      'Test Major CPU', 'Test CPU 100%', 'Active Minor Mem', 'Active Major Mem',
                                       'Test Minor Mem', 'Test Major Mem', 'Test Memory 100%'])
 
     for account in accounts_sorted:

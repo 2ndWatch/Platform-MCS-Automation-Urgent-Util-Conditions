@@ -91,7 +91,7 @@ def create_conditions(endpoint, headers, account_id, client_name, policy_id, log
               thresholdOccurrences: ALL
             }
           ]
-          violationTimeLimitSeconds: 86400
+          violationTimeLimitSeconds: 259200
         }
       ) {
         id
@@ -133,8 +133,7 @@ def create_conditions(endpoint, headers, account_id, client_name, policy_id, log
                 }
             },
             "nrql": "SELECT max(memoryUsedPercent) from SystemSample facet hostname, provider.ec2InstanceId, "
-                    "tags.Name, "
-                    "entityGuid, entityId"
+                    "tags.Name, entityGuid, entityId"
         }
     }
 
